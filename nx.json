@@ -1,5 +1,8 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "cli": {
+    "packageManager": "pnpm"
+  },
   "namedInputs": {
     "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "production": [
@@ -37,7 +40,19 @@
       "options": {
         "targetName": "test"
       },
-      "exclude": ["apps/server-e2e/**/*"]
+      "exclude": [
+        "apps/services-e2e/**/*",
+        "apps/services/auth-service-e2e/**/*",
+        "apps/services/user-management-service-e2e/**/*",
+        "apps/services/meeting-service-e2e/**/*",
+        "apps/services/transcription-service-e2e/**/*",
+        "apps/services/summarization-service-e2e/**/*",
+        "apps/services/qa-service-e2e/**/*",
+        "apps/services/payment-service-e2e/**/*",
+        "apps/api-gateway-e2e/**/*",
+        "apps/services/admin-service-e2e/**/*",
+        "apps/services/billing-service-e2e/**/*"
+      ]
     },
     {
       "plugin": "@nx/next/plugin",
@@ -57,6 +72,13 @@
         "style": "tailwind",
         "linter": "eslint"
       }
+    }
+  },
+  "targetDefaults": {
+    "@nx/js:tsc": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
     }
   }
 }
