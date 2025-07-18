@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [-] 1. Set up microservices architecture and project foundation
+- [ ] 1. Set up microservices architecture and project foundation
 
   - Create Nx workspace structure for microservices
   - Set up individual NestJS microservice applications:
