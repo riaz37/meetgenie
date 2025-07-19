@@ -171,7 +171,7 @@ export default registerAs('environment', (): EnvironmentConfig => {
     redis: {
       host: getOptionalEnv('REDIS_HOST', 'localhost'),
       port: parseInt(getOptionalEnv('REDIS_PORT', '6379'), 10),
-      password: process.env.REDIS_PASSWORD || undefined,
+      password: process.env['REDIS_PASSWORD'] || undefined,
       db: parseInt(getOptionalEnv('REDIS_DB', '0'), 10),
     },
     

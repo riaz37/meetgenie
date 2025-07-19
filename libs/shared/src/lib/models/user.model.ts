@@ -1,23 +1,31 @@
-import { IsEmail, IsString, IsOptional, IsEnum, IsObject, IsDate, IsUUID } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsObject,
+  IsDate,
+  IsUUID,
+} from 'class-validator';
 import { SyncStatus } from '../interfaces/clerk.interface';
 
 export enum SubscriptionTier {
   FREE = 'free',
   PRO = 'pro',
-  ENTERPRISE = 'enterprise'
+  ENTERPRISE = 'enterprise',
 }
 
 export enum TonePreference {
   PROFESSIONAL = 'professional',
   CASUAL = 'casual',
   DETAILED = 'detailed',
-  CONCISE = 'concise'
+  CONCISE = 'concise',
 }
 
 export enum SummaryFormat {
   BULLET_POINTS = 'bullet_points',
   PARAGRAPHS = 'paragraphs',
-  STRUCTURED = 'structured'
+  STRUCTURED = 'structured',
 }
 
 export interface NotificationSettings {

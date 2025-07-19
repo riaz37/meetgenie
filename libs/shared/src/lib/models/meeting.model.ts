@@ -1,26 +1,6 @@
 import { IsString, IsOptional, IsEnum, IsDate, IsNumber, IsUUID, IsArray, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-
-export enum MeetingPlatform {
-  ZOOM = 'zoom',
-  TEAMS = 'teams',
-  GOOGLE_MEET = 'google_meet',
-  WEBEX = 'webex'
-}
-
-export enum MeetingStatus {
-  SCHEDULED = 'scheduled',
-  IN_PROGRESS = 'in_progress',
-  COMPLETED = 'completed',
-  CANCELLED = 'cancelled',
-  FAILED = 'failed'
-}
-
-export enum ParticipantRole {
-  ORGANIZER = 'organizer',
-  PARTICIPANT = 'participant',
-  PRESENTER = 'presenter'
-}
+import { MeetingPlatform, MeetingStatus, ParticipantRole } from '../interfaces/meeting-platform.interface';
 
 export class MeetingParticipant {
   @IsUUID()

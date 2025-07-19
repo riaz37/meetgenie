@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { KafkaService, UserEvent, ClerkSyncService, UserSession } from '@meetgenie/shared';
 
@@ -67,7 +67,7 @@ export class AppService implements OnModuleInit {
       }
 
       return {
-        userId: user.id!,
+        userId: user.id || '',
         clerkUserId: user.clerkUserId,
         email: user.email,
         name: user.name,
@@ -110,7 +110,7 @@ export class AppService implements OnModuleInit {
   }
 
   @MessagePattern('auth.login')
-  async handleLogin(@Payload() data: any) {
+  async handleLogin(@Payload() data: { userId: string; email: string }) {
     this.logger.log('Processing login request', data);
     
     // Publish user login event
@@ -130,7 +130,7 @@ export class AppService implements OnModuleInit {
   }
 
   @MessagePattern('auth.logout')
-  async handleLogout(@Payload() data: any) {
+  async handleLogout(@Payload() data: { userId: string }) {
     this.logger.log('Processing logout request', data);
     
     // Publish user logout event
@@ -149,7 +149,7 @@ export class AppService implements OnModuleInit {
     return { success: true, message: 'Logout processed' };
   }
 
-  private async handleUserEvent(message: unknown) {
+  private async handleUserEvent(message: { value: Buffer }) {
     try {
       const event = JSON.parse(message.value.toString());
       this.logger.log('Received user event:', event);

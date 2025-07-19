@@ -7,9 +7,9 @@ export interface InngestConfig {
 }
 
 export const getInngestConfig = (): InngestConfig => {
-  const eventKey = process.env.INNGEST_EVENT_KEY;
-  const signingKey = process.env.INNGEST_SIGNING_KEY;
-  const baseUrl = process.env.INNGEST_BASE_URL || 'https://api.inngest.com';
+  const eventKey = process.env['INNGEST_EVENT_KEY'];
+  const signingKey = process.env['INNGEST_SIGNING_KEY'];
+  const baseUrl = process.env['INNGEST_BASE_URL'] || 'https://api.inngest.com';
 
   if (!eventKey || !signingKey) {
     throw new Error(

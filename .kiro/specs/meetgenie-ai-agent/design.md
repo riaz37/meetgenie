@@ -48,6 +48,8 @@ graph TB
         WEBEX[WebEx API]
         STRIPE[Stripe API]
         PAYPAL[PayPal API]
+        GEMINI[Google Gemini Pro API]
+        HUGGINGFACE[Hugging Face Inference API]
     end
     
     subgraph "Data Layer"
@@ -109,6 +111,12 @@ graph TB
     PAYMENT --> PAYPAL
     BILLING --> STRIPE
     
+    STT --> HUGGINGFACE
+    AI --> GEMINI
+    LANGCHAIN --> GEMINI
+    SUMMARY --> GEMINI
+    QA --> GEMINI
+    
     TRANSCRIPT --> SEARCH
     SUMMARY --> SEARCH
     QA --> SEARCH
@@ -142,7 +150,14 @@ graph TB
 - **Background Jobs**: Inngest for reliable background processing and workflows
 - **Message Broker**: Apache Kafka for microservices communication and event streaming
 - **Real-time Communication**: WebSockets for live transcription
-- **AI/ML**: LangChain for AI orchestration, LangGraph for complex workflows, LangSmith for monitoring, OpenAI GPT-4 for summarization and Q&A, Whisper for transcription
+- **AI/ML**: 
+  - LangChain for AI orchestration with Google Gemini Pro integration
+  - LangGraph for complex AI workflows and state management
+  - LangSmith for monitoring and optimization
+  - Google Gemini Pro 1.5 for summarization, Q&A, and natural language processing
+  - Hugging Face Transformers with wav2vec2-large-960h-lv60-self model for speech-to-text transcription
+  - Hugging Face Inference API for scalable model serving
+  - Transformers.js for client-side AI processing when needed
 - **Meeting Integration**: Platform-specific SDKs and APIs
 
 ## Components and Interfaces
@@ -230,15 +245,34 @@ interface MeetingSession {
 
 ### 3. Transcription Service
 
-**Purpose**: Handle real-time speech-to-text conversion and speaker identification
+**Purpose**: Handle real-time speech-to-text conversion and speaker identification using Hugging Face models
 
 **Key Interfaces**:
 ```typescript
 interface TranscriptionService {
-  startTranscription(audioStream: AudioStream): Promise<TranscriptionSession>
+  startTranscription(audioStream: AudioStream, config: TranscriptionConfig): Promise<TranscriptionSession>
   processAudioChunk(sessionId: string, audioChunk: Buffer): Promise<TranscriptSegment>
   identifySpeakers(audioData: Buffer): Promise<SpeakerIdentification>
   finalizeTranscript(sessionId: string): Promise<FullTranscript>
+  getModelStatus(): Promise<HuggingFaceModelStatus>
+  switchModel(modelName: string): Promise<void>
+}
+
+interface TranscriptionConfig {
+  modelName: string // Default: "facebook/wav2vec2-large-960h-lv60-self"
+  language: string
+  enableSpeakerDiarization: boolean
+  chunkSize: number
+  overlapSize: number
+  confidenceThreshold: number
+}
+
+interface HuggingFaceModelStatus {
+  modelName: string
+  status: 'loading' | 'ready' | 'error'
+  loadTime?: number
+  lastUsed?: Date
+  errorMessage?: string
 }
 
 interface TranscriptSegment {
@@ -246,6 +280,8 @@ interface TranscriptSegment {
   speakerId: string
   text: string
   confidence: number
+  modelUsed: string
+  processingTime: number
 }
 
 interface FullTranscript {
@@ -253,12 +289,25 @@ interface FullTranscript {
   segments: TranscriptSegment[]
   speakers: Speaker[]
   duration: number
+  modelMetadata: {
+    primaryModel: string
+    fallbackModelsUsed: string[]
+    averageConfidence: number
+    processingStats: ProcessingStats
+  }
+}
+
+interface ProcessingStats {
+  totalChunks: number
+  averageProcessingTime: number
+  modelSwitches: number
+  errorCount: number
 }
 ```
 
 ### 4. Summarization Service
 
-**Purpose**: Generate intelligent meeting summaries with structured content
+**Purpose**: Generate intelligent meeting summaries with structured content using Google Gemini Pro
 
 **Key Interfaces**:
 ```typescript
@@ -267,6 +316,32 @@ interface SummarizationService {
   extractActionItems(transcript: FullTranscript): Promise<ActionItem[]>
   identifyDecisions(transcript: FullTranscript): Promise<Decision[]>
   categorizeDiscussion(transcript: FullTranscript): Promise<DiscussionPoint[]>
+  analyzeSentiment(transcript: FullTranscript): Promise<SentimentAnalysis>
+  generatePersonalizedSummary(transcript: FullTranscript, userId: string): Promise<PersonalizedSummary>
+  getGeminiModelStatus(): Promise<GeminiModelStatus>
+}
+
+interface GeminiModelStatus {
+  modelName: string // "gemini-pro-1.5"
+  status: 'available' | 'rate_limited' | 'error'
+  requestsRemaining?: number
+  resetTime?: Date
+  lastUsed?: Date
+  averageResponseTime: number
+}
+
+interface SummarizationConfig {
+  modelName: string // Default: "gemini-pro-1.5"
+  temperature: number // 0.0 to 1.0
+  maxTokens: number
+  topP: number
+  topK: number
+  safetySettings: GeminiSafetySettings[]
+}
+
+interface GeminiSafetySettings {
+  category: 'HARM_CATEGORY_HARASSMENT' | 'HARM_CATEGORY_HATE_SPEECH' | 'HARM_CATEGORY_SEXUALLY_EXPLICIT' | 'HARM_CATEGORY_DANGEROUS_CONTENT'
+  threshold: 'BLOCK_NONE' | 'BLOCK_ONLY_HIGH' | 'BLOCK_MEDIUM_AND_ABOVE' | 'BLOCK_LOW_AND_ABOVE'
 }
 
 interface MeetingSummary {
@@ -275,7 +350,36 @@ interface MeetingSummary {
   actionItems: ActionItem[]
   decisions: Decision[]
   participants: ParticipantSummary[]
+  sentimentAnalysis: SentimentAnalysis
   generatedAt: Date
+  modelMetadata: {
+    modelUsed: string
+    processingTime: number
+    tokenUsage: TokenUsage
+    confidence: number
+  }
+}
+
+interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  estimatedCost: number
+}
+
+interface SentimentAnalysis {
+  overallSentiment: 'positive' | 'neutral' | 'negative'
+  sentimentScore: number // -1 to 1
+  participantSentiments: ParticipantSentiment[]
+  emotionalTone: string[]
+  engagementLevel: 'high' | 'medium' | 'low'
+}
+
+interface ParticipantSentiment {
+  participantId: string
+  sentiment: 'positive' | 'neutral' | 'negative'
+  sentimentScore: number
+  dominantEmotions: string[]
 }
 
 interface ActionItem {
@@ -284,19 +388,40 @@ interface ActionItem {
   dueDate?: Date
   priority: Priority
   timestamp: number
+  confidence: number
+  extractedBy: string // model name
+  context: string // surrounding text
 }
 ```
 
 ### 5. Q&A Service
 
-**Purpose**: Handle natural language queries about meeting content
+**Purpose**: Handle natural language queries about meeting content using Google Gemini Pro
 
 **Key Interfaces**:
 ```typescript
 interface QAService {
-  askQuestion(question: string, meetingId: string, userId: string): Promise<QAResponse>
+  askQuestion(question: string, meetingId: string, userId: string, context?: QAContext): Promise<QAResponse>
   getQAHistory(meetingId: string): Promise<QAInteraction[]>
   searchMeetings(query: string, userId: string): Promise<SearchResult[]>
+  generateFollowUpQuestions(question: string, answer: string): Promise<string[]>
+  classifyQueryIntent(question: string): Promise<QueryIntent>
+  expandQuery(question: string): Promise<ExpandedQuery>
+  getGeminiQAStatus(): Promise<GeminiModelStatus>
+}
+
+interface QAContext {
+  conversationHistory: QAInteraction[]
+  userPreferences: UserPreferences
+  meetingContext: MeetingContext
+  timeRange?: TimeRange
+}
+
+interface MeetingContext {
+  meetingType: string
+  participants: string[]
+  duration: number
+  topics: string[]
 }
 
 interface QAResponse {
@@ -304,13 +429,60 @@ interface QAResponse {
   confidence: number
   sources: SourceReference[]
   relatedMeetings?: string[]
+  followUpQuestions: string[]
+  queryIntent: QueryIntent
+  modelMetadata: {
+    modelUsed: string
+    processingTime: number
+    tokenUsage: TokenUsage
+    reasoning?: string
+  }
+}
+
+interface ExpandedQuery {
+  originalQuery: string
+  expandedTerms: string[]
+  synonyms: string[]
+  relatedConcepts: string[]
+  searchQueries: string[]
+}
+
+interface QueryIntent {
+  primaryIntent: 'factual' | 'analytical' | 'summarization' | 'action_items' | 'participants' | 'timeline'
+  confidence: number
+  subIntents: string[]
+  suggestedActions: string[]
 }
 
 interface QAInteraction {
+  id: string
   question: string
   answer: string
   timestamp: Date
   userId: string
+  meetingId: string
+  confidence: number
+  sources: SourceReference[]
+  queryIntent: QueryIntent
+  followUpQuestions: string[]
+  userFeedback?: UserFeedback
+}
+
+interface SourceReference {
+  type: 'transcript' | 'summary' | 'action_item' | 'decision'
+  meetingId: string
+  timestamp?: number
+  speakerId?: string
+  text: string
+  relevanceScore: number
+  context: string
+}
+
+interface UserFeedback {
+  rating: 1 | 2 | 3 | 4 | 5
+  helpful: boolean
+  comment?: string
+  timestamp: Date
 }
 ```
 

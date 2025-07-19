@@ -13,6 +13,8 @@ import {
   UserResponse,
   UserPreferences,
   SubscriptionTier,
+  SummaryFormat,
+  TonePreference,
   KafkaService,
   UserEvent,
 } from '@meetgenie/shared';
@@ -67,7 +69,7 @@ export class AppService {
         timestamp: new Date(),
         version: '1.0.0',
         source: 'user-management-service',
-        userId: user.id!,
+        userId: user.id || '',
         type: 'user.created',
         data: { email: user.email, name: user.name },
       };
@@ -165,7 +167,7 @@ export class AppService {
         timestamp: new Date(),
         version: '1.0.0',
         source: 'user-management-service',
-        userId: updatedUser.id!,
+        userId: updatedUser.id || '',
         type: 'user.updated',
         data: { changes: data.updateData },
       };
@@ -221,7 +223,7 @@ export class AppService {
         timestamp: new Date(),
         version: '1.0.0',
         source: 'user-management-service',
-        userId: updatedUser.id!,
+        userId: updatedUser.id || '',
         type: 'user.preferences_updated',
         data: { preferences: data.preferences },
       };
@@ -275,7 +277,7 @@ export class AppService {
         timestamp: new Date(),
         version: '1.0.0',
         source: 'user-management-service',
-        userId: updatedUser.id!,
+        userId: updatedUser.id || '',
         type: 'user.subscription_updated',
         data: {
           oldTier: existingUser.subscriptionTier,
@@ -359,7 +361,7 @@ export class AppService {
     try {
       this.logger.log('Listing users with filters:', data);
 
-      const filters: any = {};
+      const filters: Record<string, unknown> = {};
       if (data.subscriptionTier) {
         filters.subscriptionTier = data.subscriptionTier;
       }
@@ -406,21 +408,21 @@ export class AppService {
 
   private mapUserToResponse(user: User): UserResponse {
     return {
-      id: user.id!,
+      id: user.id || '',
       email: user.email,
       name: user.name,
       subscriptionTier: user.subscriptionTier || SubscriptionTier.FREE,
       preferences: user.preferences || this.getDefaultPreferences(),
-      createdAt: user.createdAt!,
-      lastActive: user.lastActive!,
+      createdAt: user.createdAt || new Date(),
+      lastActive: user.lastActive || new Date(),
     };
   }
 
   private getDefaultPreferences(): UserPreferences {
     return {
       language: 'en',
-      summaryFormat: 'bullet_points' as any,
-      tone: 'professional' as any,
+      summaryFormat: SummaryFormat.BULLET_POINTS,
+      tone: TonePreference.PROFESSIONAL,
       focusAreas: [],
       notifications: {
         email: true,

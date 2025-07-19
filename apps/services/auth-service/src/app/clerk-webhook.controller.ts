@@ -20,14 +20,14 @@ export class ClerkWebhookController {
   async handleClerkWebhook(
     @Body() body: ClerkWebhookEvent,
     @Headers('svix-signature') signature: string,
-    @Raw() rawBody: Buffer,
   ) {
     try {
       this.logger.log(`Received Clerk webhook: ${body.type}`);
 
       // Validate webhook signature
+      const rawBody = JSON.stringify(body);
       const isValid = this.clerkSyncService.validateClerkWebhook(
-        rawBody.toString(),
+        rawBody,
         signature,
       );
 

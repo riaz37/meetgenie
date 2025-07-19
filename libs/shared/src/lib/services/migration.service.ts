@@ -258,7 +258,7 @@ export class MigrationService {
    * Reset database (WARNING: This will drop all data)
    */
   async resetDatabase(): Promise<void> {
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env['NODE_ENV'] === 'production') {
       throw new Error('Database reset is not allowed in production');
     }
 

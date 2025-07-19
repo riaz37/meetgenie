@@ -5,17 +5,20 @@ import {
   Body, 
   Param, 
   UseGuards,
-  Request,
   HttpStatus,
   HttpException,
-  Logger
+  Logger,
+  Query
 } from '@nestjs/common';
 import { 
   AuthGuard, 
   RequirePermissions,
+  CurrentUser,
   UserPreferences,
   UpdateUserDto,
-  UserResponse
+  UserResponse,
+  UserSession,
+  SubscriptionTier
 } from '@meetgenie/shared';
 import { AppService } from './app.service';
 
@@ -27,13 +30,13 @@ export class UserProfileController {
   constructor(private readonly appService: AppService) {}
 
   @Get()
-  async getProfile(@Request() req: any): Promise<UserResponse> {
+  async getProfile(@CurrentUser() user: UserSession): Promise<UserResponse> {
     try {
-      const user = await this.appService.getUserById({ userId: req.userId });
-      if (!user) {
+      const userProfile = await this.appService.getUserById({ userId: user.userId });
+      if (!userProfile) {
         throw new HttpException('User not found', HttpStatus.NOT_FOUND);
       }
-      return user;
+      return userProfile;
     } catch (error) {
       this.logger.error('Error getting user profile:', error);
       throw error;
@@ -42,12 +45,12 @@ export class UserProfileController {
 
   @Put()
   async updateProfile(
-    @Request() req: any,
+    @CurrentUser() user: UserSession,
     @Body() updateData: UpdateUserDto
   ): Promise<UserResponse> {
     try {
       return await this.appService.updateUser({
-        userId: req.userId,
+        userId: user.userId,
         updateData
       });
     } catch (error) {
@@ -57,13 +60,13 @@ export class UserProfileController {
   }
 
   @Get('preferences')
-  async getPreferences(@Request() req: any): Promise<UserPreferences> {
+  async getPreferences(@CurrentUser() user: UserSession): Promise<UserPreferences> {
     try {
-      const user = await this.appService.getUserById({ userId: req.userId });
-      if (!user) {
+      const userProfile = await this.appService.getUserById({ userId: user.userId });
+      if (!userProfile) {
         throw new HttpException('User not found', HttpStatus.NOT_FOUND);
       }
-      return user.preferences;
+      return userProfile.preferences;
     } catch (error) {
       this.logger.error('Error getting user preferences:', error);
       throw error;
@@ -72,12 +75,12 @@ export class UserProfileController {
 
   @Put('preferences')
   async updatePreferences(
-    @Request() req: any,
+    @CurrentUser() user: UserSession,
     @Body() preferences: Partial<UserPreferences>
   ): Promise<UserResponse> {
     try {
       return await this.appService.updateUserPreferences({
-        userId: req.userId,
+        userId: user.userId,
         preferences
       });
     } catch (error) {
@@ -87,9 +90,9 @@ export class UserProfileController {
   }
 
   @Get('permissions')
-  async getPermissions(@Request() req: any): Promise<{ permissions: string[] }> {
+  async getPermissions(@CurrentUser() user: UserSession): Promise<{ permissions: string[] }> {
     try {
-      const permissions = await this.appService.getUserPermissions({ userId: req.userId });
+      const permissions = await this.appService.getUserPermissions({ userId: user.userId });
       return { permissions };
     } catch (error) {
       this.logger.error('Error getting user permissions:', error);
@@ -108,11 +111,10 @@ export class AdminUserController {
 
   @Get()
   async listUsers(
-    @Request() req: any,
-    @Body() filters?: {
+    @Query() filters?: {
       limit?: number;
       offset?: number;
-      subscriptionTier?: string;
+      subscriptionTier?: SubscriptionTier;
       search?: string;
     }
   ): Promise<UserResponse[]> {
@@ -154,12 +156,12 @@ export class AdminUserController {
   @Put(':userId/subscription')
   async updateUserSubscription(
     @Param('userId') userId: string,
-    @Body() data: { subscriptionTier: string }
+    @Body() data: { subscriptionTier: SubscriptionTier }
   ): Promise<UserResponse> {
     try {
       return await this.appService.updateUserSubscription({
         userId,
-        subscriptionTier: data.subscriptionTier as any
+        subscriptionTier: data.subscriptionTier
       });
     } catch (error) {
       this.logger.error('Error updating user subscription:', error);

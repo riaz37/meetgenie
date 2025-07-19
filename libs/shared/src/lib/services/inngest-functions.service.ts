@@ -123,4 +123,62 @@ export class InngestFunctionsService {
       throw error;
     }
   }
+
+  // Transcription post-processing functions
+  async scheduleTranscriptionPostProcessing(postProcessingData: {
+    sessionId: string;
+    transcriptId: string;
+    segments: number;
+    duration: number;
+  }): Promise<void> {
+    try {
+      await this.inngest.send({
+        name: 'transcription/post-process',
+        data: postProcessingData
+      });
+      
+      this.logger.log(`Scheduled transcription post-processing for session ${postProcessingData.sessionId}`);
+    } catch (error) {
+      this.logger.error('Failed to schedule transcription post-processing:', error);
+      throw error;
+    }
+  }
+
+  async scheduleTranscriptionCleanup(cleanupData: {
+    sessionId: string;
+    removeAudioChunks: boolean;
+    removeTemporaryFiles: boolean;
+    retentionDays?: number;
+  }): Promise<void> {
+    try {
+      await this.inngest.send({
+        name: 'transcription/cleanup',
+        data: cleanupData
+      });
+      
+      this.logger.log(`Scheduled transcription cleanup for session ${cleanupData.sessionId}`);
+    } catch (error) {
+      this.logger.error('Failed to schedule transcription cleanup:', error);
+      throw error;
+    }
+  }
+
+  async scheduleTranscriptionOptimization(optimizationData: {
+    sessionId: string;
+    transcriptId: string;
+    optimizationType: 'confidence_boost' | 'speaker_merge' | 'text_cleanup';
+    parameters?: Record<string, any>;
+  }): Promise<void> {
+    try {
+      await this.inngest.send({
+        name: 'transcription/optimize',
+        data: optimizationData
+      });
+      
+      this.logger.log(`Scheduled transcription optimization for session ${optimizationData.sessionId}`);
+    } catch (error) {
+      this.logger.error('Failed to schedule transcription optimization:', error);
+      throw error;
+    }
+  }
 }

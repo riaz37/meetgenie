@@ -7,13 +7,13 @@ export interface SupabaseConfig {
 }
 
 export const getSupabaseConfig = (): SupabaseConfig => {
-  const url = process.env.['SUPABASE_URL'] || '';
-  const anonKey = process.env.SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env['SUPABASE_URL'] || '';
+  const anonKey = process.env['SUPABASE_ANON_KEY'];
+  const serviceRoleKey = process.env['SUPABASE_SERVICE_ROLE_KEY'];
 
   if (!url || !anonKey || !serviceRoleKey) {
     throw new Error(
-      'Missing required Supabase environment variables: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY'
+      'Missing required Supabase environment variables: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY',
     );
   }
 

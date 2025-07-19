@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { SupabaseClient, PostgrestQueryBuilder } from '@supabase/supabase-js';
-import { createSupabaseAdminClient, createSupabaseClient } from '../config/supabase.config';
+import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  createSupabaseAdminClient,
+  createSupabaseClient,
+} from '../config/supabase.config';
 
 @Injectable()
 export class SupabaseService {
@@ -23,7 +26,7 @@ export class SupabaseService {
   }
 
   // Database operations
-  query<T = any>(table: string): PostgrestQueryBuilder<T, T[]> {
+  query(table: string): ReturnType<SupabaseClient['from']> {
     return this.adminClient.from(table);
   }
 
@@ -52,7 +55,7 @@ export class SupabaseService {
         .from('health_check')
         .select('*')
         .limit(1);
-      
+
       return !error;
     } catch (error) {
       console.error('Supabase health check failed:', error);
