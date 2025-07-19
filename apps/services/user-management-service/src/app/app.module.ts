@@ -1,10 +1,19 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { SharedModule } from '@meetgenie/shared';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { UserProfileController, AdminUserController } from './user-profile.controller';
 
 @Module({
-  imports: [],
-  controllers: [AppController],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env.local', '.env'],
+    }),
+    SharedModule,
+  ],
+  controllers: [AppController, UserProfileController, AdminUserController],
   providers: [AppService],
 })
 export class AppModule {}
