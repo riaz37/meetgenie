@@ -1,6 +1,5 @@
 import { Injectable, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { ClerkSyncService, PrismaService } from '@meetgenie/shared';
-import { User, SubscriptionTier } from '@meetgenie/shared';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentConfig } from '@meetgenie/shared';
 
