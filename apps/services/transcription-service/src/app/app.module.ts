@@ -7,16 +7,20 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TranscriptionController } from './transcription.controller';
 
-import { 
+import {
   SharedModule,
   TranscriptionServiceImpl,
   HuggingFaceService,
   AudioPreprocessingServiceImpl,
   SpeakerDiarizationServiceImpl,
   WebSocketTranscriptionServiceImpl,
+  RealTimeAudioStreamService,
+  RealTimeTranscriptionIntegrationService,
   InngestFunctionsService,
+  AICostMonitorService,
   environmentConfig
 } from '@meetgenie/shared';
+import { AICostMonitorService } from 'libs/shared/src/lib/services/ai-cost-monitor.service';
 
 @Module({
   imports: [
@@ -33,10 +37,7 @@ import {
     }),
     SharedModule,
   ],
-  controllers: [
-    AppController,
-    TranscriptionController
-  ],
+  controllers: [AppController, TranscriptionController],
   providers: [
     AppService,
     TranscriptionServiceImpl,
@@ -44,7 +45,10 @@ import {
     AudioPreprocessingServiceImpl,
     SpeakerDiarizationServiceImpl,
     WebSocketTranscriptionServiceImpl,
-    InngestFunctionsService
+    RealTimeAudioStreamService,
+    RealTimeTranscriptionIntegrationService,
+    InngestFunctionsService,
+    AICostMonitorService,
   ],
 })
 export class AppModule {}

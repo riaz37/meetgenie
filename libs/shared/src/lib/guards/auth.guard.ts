@@ -7,7 +7,7 @@ import {
   createParamDecorator,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ClerkSyncService } from '../services/clerk-sync.service';
+import { ClerkSyncService } from '../services/auth/clerk-sync.service';
 import { UserSession } from '../interfaces/clerk.interface';
 
 @Injectable()

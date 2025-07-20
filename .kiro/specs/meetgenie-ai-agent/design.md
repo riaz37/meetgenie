@@ -53,7 +53,7 @@ graph TB
     end
     
     subgraph "Data Layer"
-        SUPABASE_DB[(Supabase PostgreSQL)]
+        POSTGRES_DB[(PostgreSQL Database)]
         SUPABASE_STORAGE[(Supabase Storage)]
         PINECONE[(Pinecone Vector DB)]
         REDIS[(Redis Cache)]
@@ -98,14 +98,14 @@ graph TB
     RECORDER --> WEBEX
     
     AUTH --> CLERK_AUTH
-    USER --> SUPABASE_DB
-    MEETING --> SUPABASE_DB
-    TRANSCRIPT --> SUPABASE_DB
-    SUMMARY --> SUPABASE_DB
-    QA --> SUPABASE_DB
-    ADMIN_SVC --> SUPABASE_DB
-    PAYMENT --> SUPABASE_DB
-    BILLING --> SUPABASE_DB
+    USER --> POSTGRES_DB
+    MEETING --> POSTGRES_DB
+    TRANSCRIPT --> POSTGRES_DB
+    SUMMARY --> POSTGRES_DB
+    QA --> POSTGRES_DB
+    ADMIN_SVC --> POSTGRES_DB
+    PAYMENT --> POSTGRES_DB
+    BILLING --> POSTGRES_DB
     
     PAYMENT --> STRIPE
     PAYMENT --> PAYPAL
@@ -143,7 +143,8 @@ graph TB
 
 - **Frontend**: Next.js with TypeScript, Tailwind CSS
 - **Backend**: Node.js with NestJS framework
-- **Database**: Supabase PostgreSQL for structured data, Pinecone for vector search, Elasticsearch for text search
+- **Database**: PostgreSQL with Prisma ORM for structured data, Pinecone for vector search, Elasticsearch for text search
+- **ORM**: Prisma for type-safe database access, migrations, and schema management
 - **Authentication**: Clerk for user authentication and session management
 - **File Storage**: Supabase Storage for audio files and documents
 - **Cache**: Redis for real-time data and caching
@@ -159,6 +160,23 @@ graph TB
   - Hugging Face Inference API for scalable model serving
   - Transformers.js for client-side AI processing when needed
 - **Meeting Integration**: Platform-specific SDKs and APIs
+
+### Database Architecture with Prisma
+
+**Prisma Integration Strategy**:
+- **Type Safety**: Prisma Client provides fully type-safe database access with TypeScript
+- **Schema Management**: Prisma schema serves as single source of truth for database structure
+- **Migration System**: Automated database migrations with version control
+- **Connection Management**: Built-in connection pooling and optimization
+- **Query Optimization**: Prisma's query engine optimizes database queries automatically
+- **Multi-Service Access**: Shared Prisma client across all microservices for consistency
+
+**Database Connection Strategy**:
+- **Connection Pooling**: Prisma manages connection pools automatically
+- **Health Monitoring**: Built-in database health checks and monitoring
+- **Transaction Support**: ACID transactions for complex operations
+- **Read Replicas**: Support for read/write splitting for scalability
+- **Error Handling**: Comprehensive error handling with retry mechanisms
 
 ## Components and Interfaces
 
@@ -645,7 +663,108 @@ interface ClerkEventHandlers {
 - **Error Recovery**: Retry failed synchronizations with exponential backoff
 - **Data Mapping**: Transform Clerk user data to local user schema
 
-### 10. LangChain AI Orchestration Service
+### 10. Prisma Database Service
+
+**Purpose**: Provide type-safe database access, connection management, and transaction support across all microservices
+
+**Key Interfaces**:
+```typescript
+interface PrismaService extends PrismaClient {
+  healthCheck(): Promise<boolean>
+  getHealthInfo(): Promise<DatabaseHealthInfo>
+  executeTransaction<T>(fn: (prisma: PrismaClient) => Promise<T>): Promise<T>
+  getConnectionPoolStatus(): Promise<ConnectionPoolStatus>
+}
+
+interface DatabaseHealthInfo {
+  isHealthy: boolean
+  connectionStatus: 'connected' | 'disconnected' | 'error'
+  lastChecked: Date
+  responseTime?: number
+  error?: string
+  version?: string
+}
+
+interface ConnectionPoolStatus {
+  activeConnections?: number
+  idleConnections?: number
+  totalConnections?: number
+  maxConnections?: number
+  queuedRequests?: number
+}
+
+interface PrismaRepository<T> {
+  create(data: Prisma.Args<T, 'create'>['data']): Promise<T>
+  findUnique(where: Prisma.Args<T, 'findUnique'>['where']): Promise<T | null>
+  findMany(args?: Prisma.Args<T, 'findMany'>): Promise<T[]>
+  update(args: Prisma.Args<T, 'update'>): Promise<T>
+  delete(where: Prisma.Args<T, 'delete'>['where']): Promise<T>
+  count(args?: Prisma.Args<T, 'count'>): Promise<number>
+}
+
+// Service-specific repository interfaces
+interface UserRepository extends PrismaRepository<User> {
+  findByClerkId(clerkUserId: string): Promise<User | null>
+  findByEmail(email: string): Promise<User | null>
+  updateLastActive(userId: string): Promise<User>
+  getUserWithSubscription(userId: string): Promise<UserWithSubscription | null>
+}
+
+interface MeetingRepository extends PrismaRepository<Meeting> {
+  findByOrganizer(organizerId: string, filters?: MeetingFilters): Promise<Meeting[]>
+  findByParticipant(userId: string, filters?: MeetingFilters): Promise<Meeting[]>
+  findUpcoming(userId: string): Promise<Meeting[]>
+  findWithTranscripts(meetingId: string): Promise<MeetingWithTranscripts | null>
+  updateStatus(meetingId: string, status: MeetingStatus): Promise<Meeting>
+}
+
+interface TranscriptRepository extends PrismaRepository<Transcript> {
+  findByMeeting(meetingId: string): Promise<Transcript[]>
+  findSegmentsByTimeRange(transcriptId: string, startTime: number, endTime: number): Promise<TranscriptSegment[]>
+  findBySpeaker(speakerId: string): Promise<TranscriptSegment[]>
+  searchTranscripts(query: string, userId: string): Promise<TranscriptSearchResult[]>
+}
+
+interface SummaryRepository extends PrismaRepository<Summary> {
+  findByMeeting(meetingId: string): Promise<Summary[]>
+  findLatestVersion(meetingId: string): Promise<Summary | null>
+  findActionItemsByUser(userId: string, status?: ActionItemStatus): Promise<ActionItem[]>
+  findDecisionsByMeeting(meetingId: string): Promise<Decision[]>
+}
+
+interface PaymentRepository extends PrismaRepository<UserSubscription> {
+  findActiveSubscription(userId: string): Promise<UserSubscription | null>
+  findPaymentMethods(userId: string): Promise<PaymentMethod[]>
+  findInvoices(userId: string, filters?: InvoiceFilters): Promise<Invoice[]>
+  trackUsage(userId: string, usage: UsageRecord): Promise<UsageRecord>
+  getUsageReport(userId: string, period: BillingPeriod): Promise<UsageReport>
+}
+
+// Prisma middleware for audit logging
+interface AuditLogMiddleware {
+  logCreate<T>(model: string, data: T, userId?: string): Promise<void>
+  logUpdate<T>(model: string, id: string, oldData: T, newData: T, userId?: string): Promise<void>
+  logDelete<T>(model: string, id: string, data: T, userId?: string): Promise<void>
+}
+
+// Transaction patterns
+interface DatabaseTransaction {
+  createMeetingWithParticipants(meeting: MeetingCreateInput, participants: ParticipantCreateInput[]): Promise<Meeting>
+  processPaymentAndUpdateSubscription(payment: PaymentInput, subscription: SubscriptionUpdateInput): Promise<PaymentResult>
+  generateSummaryWithActionItems(summary: SummaryCreateInput, actionItems: ActionItemCreateInput[]): Promise<Summary>
+  syncClerkUserData(clerkUser: ClerkUser, preferences?: UserPreferences): Promise<User>
+}
+```
+
+**Prisma Integration Patterns**:
+- **Repository Pattern**: Encapsulate database operations with type-safe interfaces
+- **Transaction Management**: Handle complex operations with ACID guarantees
+- **Connection Pooling**: Optimize database connections across microservices
+- **Middleware Integration**: Audit logging, performance monitoring, and error handling
+- **Type Safety**: Full TypeScript integration with generated Prisma types
+- **Query Optimization**: Leverage Prisma's query engine for optimal performance
+
+### 11. LangChain AI Orchestration Service
 
 **Purpose**: Orchestrate complex AI workflows using LangChain, LangGraph, and LangSmith
 

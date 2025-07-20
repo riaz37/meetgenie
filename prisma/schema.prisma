@@ -1,0 +1,461 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../libs/shared/src/lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum SubscriptionTier {
+  free
+  pro
+  enterprise
+}
+
+enum MeetingPlatform {
+  zoom
+  teams
+  google_meet
+  webex
+}
+
+enum MeetingStatus {
+  scheduled
+  in_progress
+  completed
+  cancelled
+  failed
+}
+
+enum ParticipantRole {
+  organizer
+  participant
+  presenter
+}
+
+enum ProcessingStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum SummaryType {
+  standard
+  detailed
+  brief
+  custom
+}
+
+enum Priority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum ActionItemStatus {
+  open
+  in_progress
+  completed
+  cancelled
+}
+
+enum ImpactLevel {
+  low
+  medium
+  high
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  canceled
+  unpaid
+  trialing
+}
+
+enum InvoiceStatus {
+  draft
+  open
+  paid
+  void
+  uncollectible
+}
+
+enum PaymentType {
+  credit_card
+  debit_card
+  bank_account
+  paypal
+}
+
+enum PaymentProvider {
+  stripe
+  paypal
+}
+
+enum BillingInterval {
+  monthly
+  yearly
+}
+
+enum UsageFeature {
+  meeting_minutes
+  transcription_minutes
+  ai_summaries
+  qa_queries
+  storage_gb
+}
+
+// Core Models
+model User {
+  id                   String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  email                String            @unique @db.VarChar(255)
+  name                 String            @db.VarChar(255)
+  clerkUserId          String            @unique @map("clerk_user_id") @db.VarChar(255)
+  subscriptionTier     SubscriptionTier? @default(free) @map("subscription_tier")
+  preferences          Json              @default("{}")
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastActive           DateTime          @default(now()) @map("last_active") @db.Timestamptz(6)
+  clerkSyncStatus      String?           @map("clerk_sync_status")
+  lastClerkSyncAt      DateTime?         @map("last_clerk_sync_at") @db.Timestamptz(6)
+
+  // Relations
+  organizedMeetings    Meeting[]         @relation("MeetingOrganizer")
+  participations       MeetingParticipant[]
+  qaInteractions       QAInteraction[]
+  subscriptions        UserSubscription[]
+  paymentMethods       PaymentMethod[]
+  invoices             Invoice[]
+  usageRecords         UsageRecord[]
+  auditLogs            AuditLog[]
+  actionItemAssignments ActionItem[]     @relation("ActionItemAssignee")
+  decisionMakers       Decision[]        @relation("DecisionMaker")
+
+  @@map("users")
+}
+
+model Meeting {
+  id                String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  title             String              @db.VarChar(500)
+  description       String?
+  scheduledTime     DateTime            @map("scheduled_time") @db.Timestamptz(6)
+  actualStartTime   DateTime?           @map("actual_start_time") @db.Timestamptz(6)
+  actualEndTime     DateTime?           @map("actual_end_time") @db.Timestamptz(6)
+  duration          Int                 @default(0)
+  platform          MeetingPlatform
+  platformMeetingId String              @map("platform_meeting_id") @db.VarChar(255)
+  organizerId       String              @map("organizer_id") @db.Uuid
+  status            MeetingStatus       @default(scheduled)
+  recordingUrl      String?             @map("recording_url")
+  metadata          Json                @default("{}")
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  organizer         User                @relation("MeetingOrganizer", fields: [organizerId], references: [id], onDelete: Cascade)
+  participants      MeetingParticipant[]
+  speakers          Speaker[]
+  transcripts       Transcript[]
+  summaries         Summary[]
+  actionItems       ActionItem[]
+  decisions         Decision[]
+  qaInteractions    QAInteraction[]
+
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id           String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  meetingId    String           @map("meeting_id") @db.Uuid
+  userId       String?          @map("user_id") @db.Uuid
+  name         String           @db.VarChar(255)
+  email        String?          @db.VarChar(255)
+  role         ParticipantRole  @default(participant)
+  joinTime     DateTime?        @map("join_time") @db.Timestamptz(6)
+  leaveTime    DateTime?        @map("leave_time") @db.Timestamptz(6)
+  speakingTime Int              @default(0) @map("speaking_time")
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  meeting      Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  speakers     Speaker[]
+
+  @@map("meeting_participants")
+}
+
+model Speaker {
+  id            String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  meetingId     String              @map("meeting_id") @db.Uuid
+  name          String?             @db.VarChar(255)
+  voiceProfile  String              @map("voice_profile")
+  participantId String?             @map("participant_id") @db.Uuid
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  meeting       Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participant   MeetingParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  segments      TranscriptSegment[]
+
+  @@map("speakers")
+}
+
+model Transcript {
+  id               String              @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  meetingId        String              @map("meeting_id") @db.Uuid
+  language         String              @default("en") @db.VarChar(10)
+  confidence       Decimal             @default(0.0) @db.Decimal(3, 2)
+  processingStatus ProcessingStatus    @default(pending) @map("processing_status")
+  wordCount        Int                 @default(0) @map("word_count")
+  duration         Int                 @default(0)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  meeting          Meeting             @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  segments         TranscriptSegment[]
+
+  @@map("transcripts")
+}
+
+model TranscriptSegment {
+  id           String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  transcriptId String     @map("transcript_id") @db.Uuid
+  speakerId    String?    @map("speaker_id") @db.Uuid
+  text         String
+  startTime    Int        @map("start_time")
+  endTime      Int        @map("end_time")
+  confidence   Decimal    @default(0.0) @db.Decimal(3, 2)
+  wordCount    Int        @default(0) @map("word_count")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  transcript   Transcript @relation(fields: [transcriptId], references: [id], onDelete: Cascade)
+  speaker      Speaker?   @relation(fields: [speakerId], references: [id], onDelete: SetNull)
+
+  @@map("transcript_segments")
+}
+
+model Summary {
+  id          String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  meetingId   String      @map("meeting_id") @db.Uuid
+  version     Int         @default(1)
+  content     Json
+  summaryType SummaryType @default(standard) @map("summary_type")
+  generatedAt DateTime    @default(now()) @map("generated_at") @db.Timestamptz(6)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  meeting     Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  actionItems ActionItem[]
+  decisions   Decision[]
+
+  @@map("summaries")
+}
+
+model ActionItem {
+  id              String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  summaryId       String           @map("summary_id") @db.Uuid
+  meetingId       String           @map("meeting_id") @db.Uuid
+  description     String
+  assignee        String?          @db.VarChar(255)
+  assigneeUserId  String?          @map("assignee_user_id") @db.Uuid
+  dueDate         DateTime?        @map("due_date") @db.Timestamptz(6)
+  priority        Priority         @default(medium)
+  status          ActionItemStatus @default(open)
+  timestampMs     Int?             @map("timestamp_ms")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  summary         Summary          @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+  meeting         Meeting          @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assigneeUser    User?            @relation("ActionItemAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+
+  @@map("action_items")
+}
+
+model Decision {
+  id                   String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  summaryId            String      @map("summary_id") @db.Uuid
+  meetingId            String      @map("meeting_id") @db.Uuid
+  title                String      @db.VarChar(500)
+  description          String
+  decisionMaker        String?     @map("decision_maker") @db.VarChar(255)
+  decisionMakerUserId  String?     @map("decision_maker_user_id") @db.Uuid
+  impactLevel          ImpactLevel @default(medium) @map("impact_level")
+  timestampMs          Int?        @map("timestamp_ms")
+  createdAt            DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  summary              Summary     @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+  meeting              Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  decisionMakerUser    User?       @relation("DecisionMaker", fields: [decisionMakerUserId], references: [id], onDelete: SetNull)
+
+  @@map("decisions")
+}
+
+model QAInteraction {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  meetingId        String   @map("meeting_id") @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  question         String
+  answer           String
+  confidence       Decimal  @default(0.0) @db.Decimal(3, 2)
+  sources          Json     @default("[]")
+  relatedMeetings  String[] @map("related_meetings") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  meeting          Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("qa_interactions")
+}
+
+// Payment and Subscription Models
+model SubscriptionPlan {
+  id          String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name        String            @db.VarChar(100)
+  description String?
+  price       Decimal           @db.Decimal(10, 2)
+  currency    String            @default("USD") @db.VarChar(3)
+  interval    BillingInterval
+  features    Json              @default("[]")
+  limits      Json
+  isActive    Boolean           @default(true) @map("is_active")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  subscriptions UserSubscription[]
+
+  @@map("subscription_plans")
+}
+
+model UserSubscription {
+  id                   String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId               String             @map("user_id") @db.Uuid
+  planId               String             @map("plan_id") @db.Uuid
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id") @db.VarChar(255)
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime           @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd     DateTime           @map("current_period_end") @db.Timestamptz(6)
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  trialEnd             DateTime?          @map("trial_end") @db.Timestamptz(6)
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                 SubscriptionPlan   @relation(fields: [planId], references: [id])
+  invoices             Invoice[]
+  usageRecords         UsageRecord[]
+
+  @@map("user_subscriptions")
+}
+
+model PaymentMethod {
+  id                     String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId                 String          @map("user_id") @db.Uuid
+  stripePaymentMethodId  String          @unique @map("stripe_payment_method_id") @db.VarChar(255)
+  type                   PaymentType
+  provider               PaymentProvider @default(stripe)
+  last4                  String?         @db.VarChar(4)
+  brand                  String?         @db.VarChar(50)
+  expiryMonth            Int?            @map("expiry_month")
+  expiryYear             Int?            @map("expiry_year")
+  isDefault              Boolean         @default(false) @map("is_default")
+  isValid                Boolean         @default(true) @map("is_valid")
+  createdAt              DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user                   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payment_methods")
+}
+
+model Invoice {
+  id                 String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId             String            @map("user_id") @db.Uuid
+  subscriptionId     String?           @map("subscription_id") @db.Uuid
+  stripeInvoiceId    String?           @unique @map("stripe_invoice_id") @db.VarChar(255)
+  amount             Decimal           @db.Decimal(10, 2)
+  tax                Decimal           @default(0.00) @db.Decimal(10, 2)
+  total              Decimal           @db.Decimal(10, 2)
+  currency           String            @default("USD") @db.VarChar(3)
+  status             InvoiceStatus
+  dueDate            DateTime          @map("due_date") @db.Timestamptz(6)
+  paidAt             DateTime?         @map("paid_at") @db.Timestamptz(6)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relations
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription       UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  items              InvoiceItem[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  invoiceId   String    @map("invoice_id") @db.Uuid
+  description String
+  quantity    Int       @default(1)
+  unitPrice   Decimal   @map("unit_price") @db.Decimal(10, 2)
+  amount      Decimal   @db.Decimal(10, 2)
+  periodStart DateTime? @map("period_start") @db.Timestamptz(6)
+  periodEnd   DateTime? @map("period_end") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_items")
+}
+
+model UsageRecord {
+  id             String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  subscriptionId String?           @map("subscription_id") @db.Uuid
+  feature        UsageFeature
+  quantity       Decimal           @db.Decimal(10, 2)
+  billingPeriod  String            @map("billing_period") @db.VarChar(20)
+  metadata       Json              @default("{}")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscription   UserSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@map("usage_records")
+}
+
+model AuditLog {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId       String?   @map("user_id") @db.Uuid
+  action       String    @db.VarChar(100)
+  resourceType String    @map("resource_type") @db.VarChar(100)
+  resourceId   String?   @map("resource_id") @db.Uuid
+  oldValues    Json?     @map("old_values")
+  newValues    Json?     @map("new_values")
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relations
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}

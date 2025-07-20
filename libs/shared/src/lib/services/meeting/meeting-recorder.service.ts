@@ -8,10 +8,8 @@ import {
   MeetingRecording,
   RecordingConfig,
   MeetingPlatformEvent,
-  MeetingStatus,
   ConnectionStatus,
-  PlatformError
-} from '../interfaces/meeting-platform.interface';
+} from '../../interfaces/meeting-platform.interface';
 
 @Injectable()
 export class MeetingRecorderService {
@@ -25,16 +23,18 @@ export class MeetingRecorderService {
   // Platform adapter management
   registerPlatformAdapter(adapter: MeetingPlatformAdapter): void {
     this.platformAdapters.set(adapter.platform, adapter);
-    
+
     // Set up event forwarding from platform adapter
     adapter.onMeetingEvent((event: MeetingPlatformEvent) => {
       this.handlePlatformEvent(event);
     });
-    
+
     this.logger.log(`Registered platform adapter for ${adapter.platform}`);
   }
 
-  getPlatformAdapter(platform: MeetingPlatform): MeetingPlatformAdapter | undefined {
+  getPlatformAdapter(
+    platform: MeetingPlatform,
+  ): MeetingPlatformAdapter | undefined {
     return this.platformAdapters.get(platform);
   }
 
@@ -46,24 +46,30 @@ export class MeetingRecorderService {
   async joinMeeting(joinInfo: MeetingJoinInfo): Promise<MeetingSession> {
     const adapter = this.getPlatformAdapter(joinInfo.platform);
     if (!adapter) {
-      throw new Error(`No adapter registered for platform: ${joinInfo.platform}`);
+      throw new Error(
+        `No adapter registered for platform: ${joinInfo.platform}`,
+      );
     }
 
     try {
-      this.logger.log(`Joining meeting ${joinInfo.meetingId} on ${joinInfo.platform}`);
-      
+      this.logger.log(
+        `Joining meeting ${joinInfo.meetingId} on ${joinInfo.platform}`,
+      );
+
       const session = await adapter.joinMeeting(joinInfo);
       this.activeSessions.set(session.sessionId, session);
-      
+
       // Emit meeting joined event
       this.eventEmitter.emit('meeting.joined', {
         sessionId: session.sessionId,
         meetingId: session.meetingId,
         platform: session.platform,
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
-      this.logger.log(`Successfully joined meeting ${joinInfo.meetingId}, session: ${session.sessionId}`);
+      this.logger.log(
+        `Successfully joined meeting ${joinInfo.meetingId}, session: ${session.sessionId}`,
+      );
       return session;
     } catch (error) {
       this.logger.error(`Failed to join meeting ${joinInfo.meetingId}:`, error);
@@ -84,13 +90,14 @@ export class MeetingRecorderService {
 
     try {
       this.logger.log(`Leaving meeting session ${sessionId}`);
-      
+
       await adapter.leaveMeeting(sessionId);
       this.activeSessions.delete(sessionId);
-      
+
       // Stop any active recordings for this session
-      const recording = Array.from(this.activeRecordings.values())
-        .find(r => r.sessionId === sessionId);
+      const recording = Array.from(this.activeRecordings.values()).find(
+        (r) => r.sessionId === sessionId,
+      );
       if (recording) {
         await this.stopRecording(recording.id);
       }
@@ -100,7 +107,7 @@ export class MeetingRecorderService {
         sessionId,
         meetingId: session.meetingId,
         platform: session.platform,
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       this.logger.log(`Successfully left meeting session ${sessionId}`);
@@ -111,7 +118,10 @@ export class MeetingRecorderService {
   }
 
   // Recording management
-  async startRecording(sessionId: string, config: RecordingConfig): Promise<MeetingRecording> {
+  async startRecording(
+    sessionId: string,
+    config: RecordingConfig,
+  ): Promise<MeetingRecording> {
     const session = this.activeSessions.get(sessionId);
     if (!session) {
       throw new Error(`No active session found: ${sessionId}`);
@@ -124,23 +134,28 @@ export class MeetingRecorderService {
 
     try {
       this.logger.log(`Starting recording for session ${sessionId}`);
-      
+
       const recording = await adapter.startRecording(sessionId, config);
       this.activeRecordings.set(recording.id, recording);
-      
+
       // Emit recording started event
       this.eventEmitter.emit('recording.started', {
         recordingId: recording.id,
         sessionId,
         meetingId: session.meetingId,
         platform: session.platform,
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
-      this.logger.log(`Successfully started recording ${recording.id} for session ${sessionId}`);
+      this.logger.log(
+        `Successfully started recording ${recording.id} for session ${sessionId}`,
+      );
       return recording;
     } catch (error) {
-      this.logger.error(`Failed to start recording for session ${sessionId}:`, error);
+      this.logger.error(
+        `Failed to start recording for session ${sessionId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -158,10 +173,10 @@ export class MeetingRecorderService {
 
     try {
       this.logger.log(`Stopping recording ${recordingId}`);
-      
+
       const finalRecording = await adapter.stopRecording(recordingId);
       this.activeRecordings.delete(recordingId);
-      
+
       // Emit recording stopped event
       this.eventEmitter.emit('recording.stopped', {
         recordingId,
@@ -169,7 +184,7 @@ export class MeetingRecorderService {
         meetingId: recording.meetingId,
         platform: recording.platform,
         timestamp: new Date(),
-        duration: finalRecording.duration
+        duration: finalRecording.duration,
       });
 
       this.logger.log(`Successfully stopped recording ${recordingId}`);
@@ -213,7 +228,9 @@ export class MeetingRecorderService {
   }
 
   // Health monitoring
-  async getConnectionStatus(platform: MeetingPlatform): Promise<ConnectionStatus> {
+  async getConnectionStatus(
+    platform: MeetingPlatform,
+  ): Promise<ConnectionStatus> {
     const adapter = this.getPlatformAdapter(platform);
     if (!adapter) {
       throw new Error(`No adapter found for platform: ${platform}`);
@@ -222,49 +239,57 @@ export class MeetingRecorderService {
     return adapter.getConnectionStatus();
   }
 
-  async getAllConnectionStatuses(): Promise<Map<MeetingPlatform, ConnectionStatus>> {
+  async getAllConnectionStatuses(): Promise<
+    Map<MeetingPlatform, ConnectionStatus>
+  > {
     const statuses = new Map<MeetingPlatform, ConnectionStatus>();
-    
+
     for (const [platform, adapter] of this.platformAdapters) {
       try {
         const status = await adapter.getConnectionStatus();
         statuses.set(platform, status);
       } catch (error) {
-        this.logger.error(`Failed to get connection status for ${platform}:`, error);
+        this.logger.error(
+          `Failed to get connection status for ${platform}:`,
+          error,
+        );
         statuses.set(platform, {
           isConnected: false,
           lastError: {
             code: 'CONNECTION_CHECK_FAILED',
             message: error instanceof Error ? error.message : String(error),
             platform,
-            timestamp: new Date()
+            timestamp: new Date(),
           },
-          retryCount: 0
+          retryCount: 0,
         });
       }
     }
-    
+
     return statuses;
   }
 
   // Event handling
   private handlePlatformEvent(event: MeetingPlatformEvent): void {
-    this.logger.debug(`Received platform event: ${event.type} for session ${event.sessionId}`);
-    
+    this.logger.debug(
+      `Received platform event: ${event.type} for session ${event.sessionId}`,
+    );
+
     // Update local state based on event
     switch (event.type) {
       case 'meeting_ended':
         this.activeSessions.delete(event.sessionId);
         break;
       case 'recording_stopped':
-        const recording = Array.from(this.activeRecordings.values())
-          .find(r => r.sessionId === event.sessionId);
+        const recording = Array.from(this.activeRecordings.values()).find(
+          (r) => r.sessionId === event.sessionId,
+        );
         if (recording) {
           this.activeRecordings.delete(recording.id);
         }
         break;
     }
-    
+
     // Forward event to application event bus
     this.eventEmitter.emit(`platform.${event.type}`, event);
   }
@@ -272,21 +297,31 @@ export class MeetingRecorderService {
   // Cleanup and shutdown
   async shutdown(): Promise<void> {
     this.logger.log('Shutting down meeting recorder service...');
-    
+
     // Stop all active recordings
-    const recordingPromises = Array.from(this.activeRecordings.keys())
-      .map(recordingId => this.stopRecording(recordingId).catch(error => 
-        this.logger.error(`Failed to stop recording ${recordingId} during shutdown:`, error)
-      ));
-    
+    const recordingPromises = Array.from(this.activeRecordings.keys()).map(
+      (recordingId) =>
+        this.stopRecording(recordingId).catch((error) =>
+          this.logger.error(
+            `Failed to stop recording ${recordingId} during shutdown:`,
+            error,
+          ),
+        ),
+    );
+
     // Leave all active meetings
-    const sessionPromises = Array.from(this.activeSessions.keys())
-      .map(sessionId => this.leaveMeeting(sessionId).catch(error =>
-        this.logger.error(`Failed to leave session ${sessionId} during shutdown:`, error)
-      ));
-    
+    const sessionPromises = Array.from(this.activeSessions.keys()).map(
+      (sessionId) =>
+        this.leaveMeeting(sessionId).catch((error) =>
+          this.logger.error(
+            `Failed to leave session ${sessionId} during shutdown:`,
+            error,
+          ),
+        ),
+    );
+
     await Promise.all([...recordingPromises, ...sessionPromises]);
-    
+
     this.logger.log('Meeting recorder service shutdown complete');
   }
 }

@@ -57,9 +57,38 @@ export class HuggingFaceService {
         apiEndpoint: `https://api-inference.huggingface.co/models/${modelName}`
       });
 
+      // Check if model is available via API first
+      const isAvailable = await this.checkModelAvailability(modelName);
+      if (!isAvailable) {
+        throw new Error(`Model ${modelName} is not available on Hugging Face Hub`);
+      }
+
       // Test the model with a small audio sample to ensure it's ready
-      const testBuffer = Buffer.alloc(1024); // Small test buffer
-      await this.transcribeAudio(testBuffer, { modelName } as TranscriptionConfig);
+      const testBuffer = this.createTestAudioBuffer();
+      
+      // Try to warm up the model with retries
+      let attempts = 0;
+      const maxAttempts = 3;
+      let lastError: Error | null = null;
+
+      while (attempts < maxAttempts) {
+        try {
+          await this.warmupModel(modelName, testBuffer);
+          break;
+        } catch (error) {
+          lastError = error as Error;
+          attempts++;
+          if (attempts < maxAttempts) {
+            const delay = Math.pow(2, attempts) * 1000; // Exponential backoff
+            this.logger.warn(`Model warmup attempt ${attempts} failed, retrying in ${delay}ms...`);
+            await this.sleep(delay);
+          }
+        }
+      }
+
+      if (attempts === maxAttempts && lastError) {
+        throw lastError;
+      }
       
       const loadTime = Date.now() - startTime;
       const status: HuggingFaceModelStatus = {
@@ -91,6 +120,68 @@ export class HuggingFaceService {
       this.logger.error(`Failed to load model ${modelName}:`, error);
       throw error;
     }
+  }
+
+  private async checkModelAvailability(modelName: string): Promise<boolean> {
+    try {
+      // Check if model exists on Hugging Face Hub
+      const response = await fetch(`https://huggingface.co/api/models/${modelName}`);
+      return response.ok;
+    } catch (error) {
+      this.logger.warn(`Could not verify model availability for ${modelName}:`, error);
+      return true; // Assume available if we can't check
+    }
+  }
+
+  private createTestAudioBuffer(): Buffer {
+    // Create a small WAV file buffer for testing
+    const sampleRate = 16000;
+    const duration = 0.1; // 100ms
+    const samples = Math.floor(sampleRate * duration);
+    const buffer = Buffer.alloc(44 + samples * 2); // WAV header + 16-bit samples
+
+    // Write WAV header
+    buffer.write('RIFF', 0);
+    buffer.writeUInt32LE(36 + samples * 2, 4);
+    buffer.write('WAVE', 8);
+    buffer.write('fmt ', 12);
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20); // PCM
+    buffer.writeUInt16LE(1, 22); // Mono
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(sampleRate * 2, 28);
+    buffer.writeUInt16LE(2, 32);
+    buffer.writeUInt16LE(16, 34);
+    buffer.write('data', 36);
+    buffer.writeUInt32LE(samples * 2, 40);
+
+    // Write silence samples
+    for (let i = 0; i < samples; i++) {
+      buffer.writeInt16LE(0, 44 + i * 2);
+    }
+
+    return buffer;
+  }
+
+  private async warmupModel(modelName: string, testBuffer: Buffer): Promise<void> {
+    const audioBlob = new Blob([testBuffer], { type: 'audio/wav' });
+    
+    try {
+      await this.hfClient.automaticSpeechRecognition({
+        data: audioBlob,
+        model: modelName
+      });
+    } catch (error) {
+      // Check if it's a model loading error (503) which is expected
+      if (error instanceof Error && error.message.includes('503')) {
+        throw new Error(`Model ${modelName} is still loading, please try again later`);
+      }
+      throw error;
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private initializeModelPerformance(modelName: string): void {

@@ -498,6 +498,6 @@ export class SpeakerDiarizationServiceImpl implements SpeakerDiarizationService 
   }
 
   private generateVoiceProfileId(): string {
-    return `voice_profile_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `voice_profile_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }

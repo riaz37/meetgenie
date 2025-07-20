@@ -13,14 +13,15 @@ import {
   TranscriptionSessionStatus, 
   TranscriptionStatus, 
   TranscriptionError, 
-  TranscriptionErrorCode,
-  AudioPreprocessingResult
+  TranscriptionErrorCode
 } from '../interfaces/transcription.interface';
+import { ExecutionStatus } from '../interfaces/langchain.interface';
 import { HuggingFaceService } from './huggingface.service';
 import { AudioPreprocessingServiceImpl } from './audio-preprocessing.service';
 import { SpeakerDiarizationServiceImpl } from './speaker-diarization.service';
 import { WebSocketTranscriptionServiceImpl } from './websocket-transcription.service';
 import { InngestFunctionsService } from './inngest-functions.service';
+import { AICostMonitorService } from './ai-cost-monitor.service';
 
 @Injectable()
 export class TranscriptionServiceImpl implements TranscriptionService {
@@ -48,7 +49,8 @@ export class TranscriptionServiceImpl implements TranscriptionService {
     private speakerDiarizationService: SpeakerDiarizationServiceImpl,
     private websocketService: WebSocketTranscriptionServiceImpl,
     private inngestService: InngestFunctionsService,
-    private eventEmitter: EventEmitter2
+    private eventEmitter: EventEmitter2,
+    private costMonitorService: AICostMonitorService
   ) {}
 
   async startTranscription(audioStream: NodeJS.ReadableStream, config: TranscriptionConfig = this.defaultConfig): Promise<TranscriptionSession> {
@@ -211,6 +213,8 @@ export class TranscriptionServiceImpl implements TranscriptionService {
   }
 
   private async processChunk(session: TranscriptionSession, chunk: AudioChunk): Promise<TranscriptSegment> {
+    const executionStartTime = Date.now();
+    
     // Preprocess audio
     const preprocessingResult = await this.audioPreprocessingService.preprocessAudio(
       chunk.data,
@@ -249,6 +253,41 @@ export class TranscriptionServiceImpl implements TranscriptionService {
       audioChunkId: chunk.id,
       language: session.config.language
     };
+
+    // Track cost for this transcription
+    try {
+      const executionTime = Date.now() - executionStartTime;
+      const estimatedTokens = Math.ceil(transcriptionResult.text.split(' ').length * 1.3); // Rough estimation
+      
+      await this.costMonitorService.trackExecution({
+        id: segment.id,
+        nodeId: `transcription_node_${session.sessionId}`,
+        workflowId: `transcription_${session.sessionId}`,
+        startTime: new Date(executionStartTime),
+        endTime: new Date(),
+        duration: executionTime,
+        status: ExecutionStatus.COMPLETED,
+        input: {
+          audioChunkSize: chunk.data.length,
+          sessionId: session.sessionId
+        },
+        output: {
+          text: transcriptionResult.text,
+          confidence: transcriptionResult.confidence
+        },
+        metadata: {
+          modelUsed: session.currentModel,
+          tokenUsage: {
+            promptTokens: 0, // Audio input doesn't have prompt tokens
+            completionTokens: estimatedTokens,
+            totalTokens: estimatedTokens,
+            estimatedCost: estimatedTokens * 0.00001 // Rough HuggingFace cost estimation
+          }
+        }
+      });
+    } catch (costError) {
+      this.logger.warn(`Failed to track transcription cost:`, costError);
+    }
 
     // Mark chunk as processed
     chunk.processed = true;
@@ -652,18 +691,18 @@ export class TranscriptionServiceImpl implements TranscriptionService {
 
   // ID generators
   private generateSessionId(): string {
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateChunkId(): string {
-    return `chunk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `chunk_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateSegmentId(): string {
-    return `segment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `segment_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateTranscriptId(): string {
-    return `transcript_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `transcript_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }

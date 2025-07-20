@@ -1,12 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from './database.service';
-import {
-  User,
-  SubscriptionTier,
-  TonePreference,
-  SummaryFormat,
-  UserPreferences,
-} from '../models/user.model';
+import { PrismaService } from './prisma.service';
+import { User, SubscriptionTier } from '../generated/prisma';
 import {
   ClerkUser,
   ClerkWebhookEvent,
@@ -26,7 +20,7 @@ export class ClerkSyncService {
   private readonly clerkClient;
 
   constructor(
-    private readonly databaseService: DatabaseService,
+    private readonly prismaService: PrismaService,
     private readonly configService: ConfigService<EnvironmentConfig>,
   ) {
     const clerkConfig = this.configService.get('clerk', { infer: true });
@@ -129,7 +123,9 @@ export class ClerkSyncService {
 
       // Create new user
       const userData = this.mapClerkUserToLocal(clerkUser);
-      const user = await this.databaseService.create('users', userData, User);
+      const user = await this.prismaService.user.create({
+        data: userData,
+      });
 
       this.logger.log(`User created successfully: ${user.id}`);
       return {
@@ -175,12 +171,10 @@ export class ClerkSyncService {
         throw new Error('User ID is required for update operation');
       }
 
-      const updatedUser = await this.databaseService.update(
-        'users',
-        existingUser.id,
-        updateData,
-        User,
-      );
+      const updatedUser = await this.prismaService.user.update({
+        where: { id: existingUser.id },
+        data: updateData,
+      });
 
       this.logger.log(`User updated successfully: ${updatedUser.id}`);
       return {
@@ -222,17 +216,15 @@ export class ClerkSyncService {
         throw new Error('User ID is required for update operation');
       }
 
-      await this.databaseService.update(
-        'users',
-        existingUser.id,
-        updateData,
-        User,
-      );
+      const updatedUser = await this.prismaService.user.update({
+        where: { id: existingUser.id },
+        data: updateData,
+      });
 
-      this.logger.log(`User marked as deleted: ${existingUser.id}`);
+      this.logger.log(`User marked as deleted: ${updatedUser.id}`);
       return {
         success: true,
-        userId: existingUser.id,
+        userId: updatedUser.id,
         syncStatus: SyncStatus.DELETED,
       };
     } catch (error) {
@@ -250,13 +242,9 @@ export class ClerkSyncService {
    */
   async getUserByClerkId(clerkUserId: string): Promise<User | null> {
     try {
-      const users = await this.databaseService.findMany(
-        'users',
-        { clerkUserId },
-        User,
-        { limit: 1 },
-      );
-      return users.length > 0 ? users[0] : null;
+      return await this.prismaService.user.findUnique({
+        where: { clerkUserId },
+      });
     } catch (error) {
       this.logger.error('Error finding user by Clerk ID:', error);
       return null;
@@ -340,7 +328,7 @@ export class ClerkSyncService {
         email: user.email,
         name: user.name,
         permissions: this.getUserPermissions(user),
-        subscriptionTier: user.subscriptionTier || SubscriptionTier.FREE,
+        subscriptionTier: user.subscriptionTier || SubscriptionTier.free,
         sessionId: session.id,
         expiresAt: new Date(session.expireAt),
       };
@@ -353,11 +341,11 @@ export class ClerkSyncService {
   /**
    * Create default user preferences
    */
-  createDefaultUserPreferences(): UserPreferences {
+  createDefaultUserPreferences(): Record<string, any> {
     return {
       language: 'en',
-      summaryFormat: SummaryFormat.BULLET_POINTS,
-      tone: TonePreference.PROFESSIONAL,
+      summaryFormat: 'bullet_points',
+      tone: 'professional',
       focusAreas: [],
       notifications: {
         email: true,
@@ -372,17 +360,24 @@ export class ClerkSyncService {
   /**
    * Map Clerk user to local user format
    */
-  private mapClerkUserToLocal(clerkUser: ClerkUser): Partial<User> {
+  private mapClerkUserToLocal(clerkUser: ClerkUser): {
+    email: string;
+    name: string;
+    clerkUserId: string;
+    subscriptionTier: SubscriptionTier;
+    preferences: Record<string, unknown>;
+    clerkSyncStatus: string;
+    lastClerkSyncAt: Date;
+    lastActive: Date;
+  } {
     return {
       email: this.getPrimaryEmail(clerkUser),
       name: this.getFullName(clerkUser),
       clerkUserId: clerkUser.id,
-      subscriptionTier: SubscriptionTier.FREE,
+      subscriptionTier: SubscriptionTier.free,
       preferences: this.createDefaultUserPreferences(),
       clerkSyncStatus: SyncStatus.SYNCED,
       lastClerkSyncAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
       lastActive: new Date(),
     };
   }
@@ -420,9 +415,9 @@ export class ClerkSyncService {
     const basePermissions = ['read:meetings', 'create:meetings'];
 
     switch (user.subscriptionTier) {
-      case SubscriptionTier.PRO:
+      case SubscriptionTier.pro:
         return [...basePermissions, 'advanced:summaries', 'export:data'];
-      case SubscriptionTier.ENTERPRISE:
+      case SubscriptionTier.enterprise:
         return [
           ...basePermissions,
           'advanced:summaries',
@@ -445,14 +440,27 @@ export class ClerkSyncService {
       const cutoffDate = new Date();
       cutoffDate.setHours(cutoffDate.getHours() - 24); // 24 hours ago
 
-      const usersToSync = await this.databaseService.findMany(
-        'users',
-        {
-          clerkSyncStatus: [SyncStatus.ERROR, SyncStatus.PENDING],
+      const usersToSync = await this.prismaService.user.findMany({
+        where: {
+          OR: [
+            { clerkSyncStatus: SyncStatus.ERROR },
+            { clerkSyncStatus: SyncStatus.PENDING },
+            {
+              AND: [
+                { clerkSyncStatus: SyncStatus.SYNCED },
+                {
+                  OR: [
+                    { lastClerkSyncAt: { lt: cutoffDate } },
+                    { lastClerkSyncAt: null },
+                  ],
+                },
+              ],
+            },
+          ],
         },
-        User,
-        { limit },
-      );
+        take: limit,
+        orderBy: { lastClerkSyncAt: 'asc' },
+      });
 
       this.logger.log(`Found ${usersToSync.length} users to sync`);
 
